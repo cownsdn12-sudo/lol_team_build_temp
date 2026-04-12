@@ -7,6 +7,7 @@ import streamlit as st
 
 
 POSITIONS = ["탑", "정글", "미드", "원딜", "서폿"]
+POSITION_ORDER_MAP = {pos: i for i, pos in enumerate(POSITIONS)}
 
 
 @st.cache_data
@@ -20,15 +21,24 @@ def load_data():
     return df
 
 
-def get_main_position(row):
+# ✅ 주포 / 부포 계산
+def get_positions(row):
     scores = {pos: row[pos] for pos in POSITIONS if pd.notna(row[pos])}
     if not scores:
-        return None
-    return max(scores, key=scores.get)
+        return None, []
 
+    sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
-def valid_positions(row):
-    return [pos for pos in POSITIONS if pd.notna(row[pos])]
+    main_pos = sorted_scores[0][0]
+
+    # 두 번째 점수
+    if len(sorted_scores) > 1:
+        second_score = sorted_scores[1][1]
+        sub_positions = [pos for pos, score in sorted_scores if score == second_score]
+    else:
+        sub_positions = []
+
+    return main_pos, sub_positions
 
 
 def assign_team_positions(team_df):
@@ -50,26 +60,30 @@ def assign_team_positions(team_df):
 
             score = float(player[pos])
             main_pos = player["주포지션"]
-            main_score = player[main_pos] if main_pos and pd.notna(player[main_pos]) else score
+            sub_pos_list = player["부포지션"]
+
+            main_score = player[main_pos] if main_pos else score
 
             total_score += score
+
             if pos == main_pos:
                 main_count += 1
+            elif pos in sub_pos_list:
+                offrole_penalty += float(main_score - score) * 0.5  # ⭐ 부포는 패널티 절반
             else:
                 offrole_penalty += float(main_score - score)
 
             assignment.append({
-                "소환명": player["소환명"],
                 "이름": player["이름"],
                 "포지션": pos,
                 "점수": score,
                 "주포지션": main_pos,
+                "부포지션": ",".join(sub_pos_list) if sub_pos_list else "",
             })
 
         if not valid:
             continue
 
-        # 점수함수: 주포지션 많이 갈수록 좋고, 부포 손실 적을수록 좋음
         heuristic = (-main_count, offrole_penalty, -total_score)
 
         if best_score is None or heuristic < best_score:
@@ -105,7 +119,6 @@ def evaluate_combination(team1_df, team2_df, max_diff=1.0):
         + team_main_position_conflict_penalty(team2_df)
     )
 
-    # 전체 조합 평가
     combo_score = (
         diff * 10
         + team1_result["offrole_penalty"]
@@ -126,7 +139,6 @@ def generate_top_combinations(selected_df, max_diff=1.0, top_n=5):
     indices = list(selected_df.index)
     results = []
 
-    # 중복 팀 분할 방지: 첫 번째 사람은 무조건 team1에 포함
     first_idx = indices[0]
     others = indices[1:]
 
@@ -147,76 +159,71 @@ def generate_top_combinations(selected_df, max_diff=1.0, top_n=5):
 
 def assignment_to_df(team_result):
     df = pd.DataFrame(team_result["assignment"])
-    return df[["포지션", "소환명", "이름", "점수", "주포지션"]].sort_values("포지션")
+    df["정렬"] = df["포지션"].map(POSITION_ORDER_MAP)
+    df = df.sort_values("정렬").reset_index(drop=True)
+    return df[["포지션", "이름", "점수", "주포지션", "부포지션"]]
 
+
+# ================= UI =================
 
 st.set_page_config(page_title="내전 팀 메이커", layout="wide")
 
 st.title("🎮 내전 5:5 팀 조합기")
-st.caption("주포지션 우선, 빈 점수 라인 금지, 팀 점수 차이 제한")
 
 df = load_data().copy()
-df["주포지션"] = df.apply(get_main_position, axis=1)
+
+# ⭐ 주포/부포 계산
+df[["주포지션", "부포지션"]] = df.apply(lambda row: pd.Series(get_positions(row)), axis=1)
 
 with st.sidebar:
     st.header("설정")
-    max_diff = st.number_input("팀 점수 차이 허용", min_value=0.0, max_value=5.0, value=1.0, step=0.1)
 
-    participant_options = df["이름"].tolist()
-    selected_names = st.multiselect(
-        "오늘 참여자 10명 선택",
-        options=participant_options,
-        default=participant_options[:10] if len(participant_options) >= 10 else participant_options,
-    )
+    max_diff = st.number_input("팀 점수 차이", 0.0, 5.0, 1.0)
 
-    run_button = st.button("TOP 5 조합 찾기", use_container_width=True)
+    st.write("### 참여자 선택")
+
+    selected_names = []
+    cols = st.columns(2)
+
+    for i, name in enumerate(df["이름"].tolist()):
+        if cols[i % 2].checkbox(name):
+            selected_names.append(name)
+
+    st.write(f"{len(selected_names)} / 10")
+
+    run_button = st.button("팀 생성")
+
 
 if run_button:
     if len(selected_names) != 10:
-        st.error("참여자는 정확히 10명을 선택해야 합니다.")
+        st.error("10명 선택하세요")
         st.stop()
 
     selected_df = df[df["이름"].isin(selected_names)].copy()
 
-    if len(selected_df) != 10:
-        st.error("중복되었거나 시트 데이터 확인이 필요합니다.")
-        st.stop()
+    st.subheader("선택된 10명")
+    st.dataframe(selected_df[["이름"] + POSITIONS + ["주포지션", "부포지션"]])
 
-    top_results = generate_top_combinations(selected_df, max_diff=max_diff, top_n=5)
+    top_results = generate_top_combinations(selected_df, max_diff)
 
-    if not top_results:
-        st.warning("조건을 만족하는 조합이 없습니다. 점수 차이 허용 범위를 조금 늘려보세요.")
-        st.stop()
+    st.subheader("TOP 5")
 
-    st.subheader("🏆 TOP 5 조합")
+    for i, result in enumerate(top_results):
+        st.write(f"### #{i+1} (차이 {result['diff']:.2f})")
 
-    for i, result in enumerate(top_results, start=1):
-        with st.container():
-            st.markdown(f"### #{i}")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("팀 점수 차이", f"{result['diff']:.2f}")
-            c2.metric("팀1 총점", f"{result['team1']['team_total']:.2f}")
-            c3.metric("팀2 총점", f"{result['team2']['team_total']:.2f}")
+        c1, c2 = st.columns(2)
 
-            left, right = st.columns(2)
-            with left:
-                st.markdown("#### Team 1")
-                st.dataframe(assignment_to_df(result["team1"]), use_container_width=True)
-            with right:
-                st.markdown("#### Team 2")
-                st.dataframe(assignment_to_df(result["team2"]), use_container_width=True)
+        with c1:
+            st.write("Team 1")
+            st.dataframe(assignment_to_df(result["team1"]))
 
-            st.divider()
+        with c2:
+            st.write("Team 2")
+            st.dataframe(assignment_to_df(result["team2"]))
 
-    st.subheader("🎲 랜덤 추천")
-    picked = random.choice(top_results)
+    st.subheader("랜덤 추천")
+    pick = random.choice(top_results)
 
     c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("#### Random Team 1")
-        st.dataframe(assignment_to_df(picked["team1"]), use_container_width=True)
-    with c2:
-        st.markdown("#### Random Team 2")
-        st.dataframe(assignment_to_df(picked["team2"]), use_container_width=True)
-
-    st.success(f"선택된 조합의 팀 점수 차이: {picked['diff']:.2f}")
+    c1.dataframe(assignment_to_df(pick["team1"]))
+    c2.dataframe(assignment_to_df(pick["team2"]))
