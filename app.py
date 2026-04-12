@@ -162,7 +162,7 @@ with st.sidebar:
     st.header("설정")
     max_diff = st.number_input("팀 점수 차이 허용", min_value=0.0, max_value=5.0, value=1.0, step=0.1)
 
-    participant_options = df["이름름"].tolist()
+    participant_options = df["이름"].tolist()
     selected_names = st.multiselect(
         "오늘 참여자 10명 선택",
         options=participant_options,
@@ -176,7 +176,7 @@ if run_button:
         st.error("참여자는 정확히 10명을 선택해야 합니다.")
         st.stop()
 
-    selected_df = df[df["이름름"].isin(selected_names)].copy()
+    selected_df = df[df["이름"].isin(selected_names)].copy()
 
     if len(selected_df) != 10:
         st.error("중복되었거나 시트 데이터 확인이 필요합니다.")
