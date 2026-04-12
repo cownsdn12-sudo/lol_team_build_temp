@@ -9,7 +9,7 @@ import streamlit as st
 POSITIONS = ["탑", "정글", "미드", "원딜", "서폿"]
 
 
-@st.cache_data
+# @st.cache_data
 def load_data():
     df = pd.read_excel("player.xlsx")
     df.columns = df.columns.str.strip()
