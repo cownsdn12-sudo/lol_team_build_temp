@@ -2,10 +2,8 @@ import itertools
 import random
 from collections import Counter
 
-import gspread
 import pandas as pd
 import streamlit as st
-from google.oauth2.service_account import Credentials
 
 
 POSITIONS = ["탑", "정글", "미드", "원딜", "서폿"]
@@ -13,22 +11,8 @@ POSITIONS = ["탑", "정글", "미드", "원딜", "서폿"]
 
 @st.cache_data
 def load_data():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-
-    creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=scopes,
-    )
-    client = gspread.authorize(creds)
-
-    spreadsheet = client.open(st.secrets["google_sheet"]["spreadsheet_name"])
-    worksheet = spreadsheet.worksheet(st.secrets["google_sheet"]["worksheet_name"])
-    records = worksheet.get_all_records()
-
-    df = pd.DataFrame(records)
+    df = pd.read_excel("player.xlsx")
+    df.columns = df.columns.str.strip()
 
     for col in POSITIONS:
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -178,7 +162,7 @@ with st.sidebar:
     st.header("설정")
     max_diff = st.number_input("팀 점수 차이 허용", min_value=0.0, max_value=5.0, value=1.0, step=0.1)
 
-    participant_options = df["소환명"].tolist()
+    participant_options = df["이름름"].tolist()
     selected_names = st.multiselect(
         "오늘 참여자 10명 선택",
         options=participant_options,
@@ -192,7 +176,7 @@ if run_button:
         st.error("참여자는 정확히 10명을 선택해야 합니다.")
         st.stop()
 
-    selected_df = df[df["소환명"].isin(selected_names)].copy()
+    selected_df = df[df["이름름"].isin(selected_names)].copy()
 
     if len(selected_df) != 10:
         st.error("중복되었거나 시트 데이터 확인이 필요합니다.")
