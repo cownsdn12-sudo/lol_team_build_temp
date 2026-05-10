@@ -179,6 +179,9 @@ st.title("🎮 내전 5:5 팀 조합기")
 
 df = load_data().copy()
 df[["주포지션", "부포지션"]] = df.apply(lambda row: pd.Series(get_positions(row)), axis=1)
+# 준우 포지션 강제 지정
+df.loc[df["이름"] == "준우", "주포지션"] = "원딜"
+df.loc[df["이름"] == "준우", "부포지션"] = [["정글"]]
 
 with st.sidebar:
     st.header("설정")
@@ -269,7 +272,3 @@ if run_button:
     c3.metric("2팀 총점", f"{pick['team2']['team_total']:.2f}")
 
     st.dataframe(make_team_table(pick["team1"], pick["team2"]), use_container_width=True)
-
-# 준우 포지션 강제 지정
-df.loc[df["이름"] == "준우", "주포지션"] = "원딜"
-df.loc[df["이름"] == "준우", "부포지션"] = [["정글"]]
