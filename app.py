@@ -181,8 +181,10 @@ df = load_data().copy()
 df[["주포지션", "부포지션"]] = df.apply(lambda row: pd.Series(get_positions(row)), axis=1)
 
 # 준우 포지션 강제 지정
-df.loc[df["이름"] == "준우", "주포지션"] = "원딜"
-df.loc[df["이름"] == "준우", "부포지션"] = "정글"
+mask = df["이름"].astype(str).str.strip() == "준우"
+
+df.loc[mask, "주포지션"] = "원딜"
+df.loc[mask, "부포지션"] = df.loc[mask, "부포지션"].apply(lambda x: ["정글"])
 
 with st.sidebar:
     st.header("설정")
