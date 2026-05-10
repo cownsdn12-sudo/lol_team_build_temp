@@ -182,7 +182,7 @@ df[["주포지션", "부포지션"]] = df.apply(lambda row: pd.Series(get_positi
 
 # 준우 포지션 강제 지정
 df.loc[df["이름"] == "준우", "주포지션"] = "원딜"
-df.loc[df["이름"] == "준우", "부포지션"] = [["정글"]]
+df.loc[df["이름"] == "준우", "부포지션"] = "정글"
 
 with st.sidebar:
     st.header("설정")
